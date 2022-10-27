@@ -1,0 +1,123 @@
+---
+title: "Final project part a"
+author: "Xiaoteng Zhang"
+date: "11/21/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(magrittr)
+library(ggplot2)
+library(ggpubr)
+## installation of the fourth package is for us to calculate the coefficient of correlation
+```
+Part 1 
+In this segment we first import the data, and do some cleaning, dropping n.a values etc. 
+```{r}
+data= read.csv("Final_Project_FlixGem.csv")
+movie= data%>% filter(grepl('Movie',Series.or.Movie)) ## selecting rows only containing Movie 
+movie_no_na= movie%>%drop_na() ##rows with na are dropped 
+```
+(a)
+Here we are asked to check the association between running time and the language used
+```{r}
+language= movie_no_na%>%
+  group_by(Languages)%>%tally()%>%arrange(desc(n)) 
+##here we are checking which language combo has the most occurences then arrange into descending order 
+top_5= slice(language,1:5) 
+##here we see top 5 language combinations appearing in the dataset 
+movie_top_5= movie_no_na%>%mutate(language_lmp= fct_lump(movie_no_na$Languages%>%as.factor,5))
+## 
+runtime_fct= as.factor(movie_top_5$Runtime)
+str(runtime_fct)
+##we see that there are only three factor levels, don't need to recode 
+```
+Now comes to the plotting part 
+```{r}
+ ggplot(movie_top_5,aes(x=language_lmp,y=Hidden.Gem.Score,fill=language_lmp))+
+  stat_boxplot(geom="errorbar",width=0.25)+geom_boxplot()+theme(axis.text.x = element_text(angle = 90))
+ ggplot(movie_top_5,aes(x=Runtime,y=Hidden.Gem.Score,fill=Runtime))+
+  stat_boxplot(geom="errorbar",width=0.25)+geom_boxplot()
+```
+at least from what i could see from the boxplot, there is no clear association on the length of running time and the language of the film to hidden gem score. 
+
+Part(b)
+IMDb Score 
+```{r}
+ggplot(movie_top_5,aes(x=IMDb.Score,y=Hidden.Gem.Score))+geom_point()+labs(x="IMDb.Score",y="Hidden.Gem.Score")+geom_smooth(method='lm')+labs(title = "IMDb")+stat_cor()
+```
+Rotten Tomato
+```{r}
+ggplot(movie_top_5,aes(x=Rotten.Tomatoes.Score,y=Hidden.Gem.Score))+geom_point()+labs(x="Rotten Tomatoes",y="Hidden.Gem.Score")+geom_smooth(method='lm')+labs(title = "Rotten Tomato")+stat_cor()
+```
+Metacritic Score 
+```{r}
+ggplot(movie_top_5,aes(x=Metacritic.Score,y=Hidden.Gem.Score))+geom_point()+labs(x="Metacritic",y="Hidden.Gem.Score")+geom_smooth(method='lm')+labs(title = "Metacritic")+stat_cor()
+```
+
+Part(c)
+```{r}
+ggplot(movie_top_5,aes(x=Hidden.Gem.Score,col=Runtime)) +
+geom_density(size=1.5)+ xlab("Hidden.Gem.Score")
+```
+
+Second Part 
+```{r}
+library(rpart)
+library(rpart.plot)
+```
+
+```{r}
+ml= rpart(formula = Hidden.Gem.Score ~ Runtime+language_lmp+IMDb.Score+Metacritic.Score+Rotten.Tomatoes.Score,
+          data=movie_top_5,method = "anova")
+ml
+jpeg('rplot.jpg')
+rpart.plot(ml)
+dev.off()
+## saving the graph as a jpg file 
+plotcp(ml)
+```
+Preliminary interpretation of the graph: 
+The model decides where to split essentially by looking at the largest reduction in "sums of squares error (SSE)" 
+Here in the graph, we can see that the first split happens at "whether the rotten tomatoes score is bigger than 59 or not?" Also, if we look down the line, we will find that the following the two following criterions on the right hand side node are also to do with rotten tomatoes score. Therefore, all this would imply that the rotten tomatoes score would be the most important features for predicting the hidden gem score. If we look at our result from the last part in the first section, we see that our prediction roughly corresponds to the results obtained there. Among the three correlation coefficients we calculated there, the biggest one happens between rotten tomatoes score and hidden gem score. Therefore, I would agree the prediction did a decent job here. 
+
+The last Part 
+Firstly, this H would be an integer. We can compute the index as follows: order the values of f from the largest to the lowest value. Then, we look for the last position in which f is greater than or equal to the position (we call h this position) 
+```{r}
+h_index = function(cites) {
+  if(max(cites) == 0) return(0) # assuming this is reasonable
+  cites = cites[order(cites, decreasing = TRUE)]
+  tail(which(cites >= seq_along(cites)), 1)
+} ## write a function to compute the index 
+```
+
+```{r}
+movie_director_sum=movie_no_na%>%group_by(Director)%>%summarise(Score= h_index(Hidden.Gem.Score))%>%arrange(desc(Score))
+```
+Another function to confirm the result 
+```{r}
+hindex <- function(x) {
+    tx <- sort(x, decreasing = T)
+    print(sum(tx >= seq_along(tx)))
+}
+
+movie_director_sum2=movie_no_na%>%group_by(Director)%>%summarise(Score= h_index(Hidden.Gem.Score))%>%arrange(desc(Score))
+```
+```{r,warning = FALSE}
+library(stringr)
+top_seventeen= filter(movie_director_sum2,Score>=4) ##clearly, top 10 directors have to at least first have a score of 4, to decide exactly who gets top 10 we need to check the # of appearances in the dataset, the director would be ranked higher if they have more appearances in the list 
+
+a= NULL
+for (i in seq_along(top_seventeen$Director)) {
+  a[i]= sum(str_count(movie_no_na, toString(top_seventeen[i,1])))
+}
+a 
+## here I used the loop to calculate how many times this director has appeared in the bigger dataset 
+```
+
+```{r}
+top_10= cbind(top_seventeen,a)%>%arrange(desc(...3))%>%rename(Appearances=...3)%>%head(10) 
+top_10 ##final result 
+```
+```
